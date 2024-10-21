@@ -1,0 +1,65 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+
+# Check for command-line arguments
+if (@ARGV != 3) {
+    die "Usage: $0 <chromosome_length> <vcf_file> <output_psmcfa_file>\n";
+}
+
+# Get the chromosome length, VCF file, and output PSMCFA file from command-line arguments
+my ($chromosome_length, $vcf_file, $output_psmcfa) = @ARGV;
+
+# Initialize chromosome sequence with the specified length filled with 'T'
+my $sequence = 'T' x $chromosome_length;
+
+# Hash to store positions with heterozygous genotypes
+my %heterozygous_positions;
+
+# Open and process the VCF file
+open my $vcf_fh, '<', $vcf_file or die "Could not open VCF file: $!";
+
+while (my $line = <$vcf_fh>) {
+    chomp $line;
+    if ($line =~ /^#/) {
+        # Skip header lines
+        next;
+    }
+    my @fields = split /\t/, $line;
+    if (@fields > 9) {
+        my $POS = $fields[1];  # The position column (POS) in uppercase
+        my $i0 = $fields[9];   # Genotype information is in the i0 field
+
+        # Check for heterozygous genotype (0|1 or 1|0)
+        if ($i0 =~ /0\|1|1\|0/) {
+            $heterozygous_positions{$POS} = 1;
+            print "Detected heterozygous position: $POS\n";  # Debugging output
+        }
+    }
+}
+close $vcf_fh;
+
+# Modify the sequence at positions with heterozygous genotypes
+foreach my $pos (keys %heterozygous_positions) {
+    # Replace the nucleotide at the position with 'K'
+    substr($sequence, $pos - 1, 1, 'K');
+    print "Replaced position $pos with 'K'\n";  # Debugging output
+}
+
+# Function to wrap the sequence
+sub wrap_sequence {
+    my ($seq, $width) = @_;
+    $seq =~ s/(.{1,$width})/$1\n/g;
+    return $seq;
+}
+
+# Wrap the sequence to 60 characters per line
+my $wrapped_sequence = wrap_sequence($sequence, 60);
+
+# Write the sequence to the output PSMCFA file
+open my $psmcfa_fh, '>', $output_psmcfa or die "Could not open output PSMCFA file: $!";
+print $psmcfa_fh ">chromosome\n";
+print $psmcfa_fh "$wrapped_sequence";
+close $psmcfa_fh;
+
+print "PSMCFA file '$output_psmcfa' generated successfully.\n";
